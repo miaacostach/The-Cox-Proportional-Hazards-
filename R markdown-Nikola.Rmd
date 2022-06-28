@@ -1,0 +1,380 @@
+---
+title: "Cox Proportional-Hazards Model-The Framingham Heart Study "
+author: "Miguel Acosta"
+date: "06/28/2022"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+framingham_raw <- read.delim2("C:\\Users\\MiguelAngel\\Documents\\R Miguelo\\Nikola Croacia\\framingham_raw.csv")
+data_all <- framingham_raw
+
+library(survminer)
+library(survival)
+
+```
+
+$$Research~ protocol$$
+
+
+**Research protocol**
+
+The way of evaluating the different variables must be taken into account, for example the character variables to have clarity in the form of classification to homogenize criteria and avoid disorder in the database. For example, the gender variable, mark male 1 and female 2. Likewise, think about the correct way to classify with the other variables that are qualitative.
+
+Before starting the data analysis, check again and clean the database.
+
+1. Verify that the numerical variables present a normal distribution. This can be verified with histograms.
+2. Calculate tables of proportions of the most important variables in the study
+3. Visualizing the estimated distribution of survival times. visualize the predicted survival proportion at any given point in time for a particular risk group.
+3. Check with chi square statistical differences in the most important variables. compares the observed distribution of the data with an expected distribution of the data.
+4. Cox models are made and the best one is chosen. Models with interactions are also verified.
+5. Select the best model according to criteria such as AIC and best p-values.
+
+$$*Data~ cleaning*$$
+
+
+## Data cleaning
+
+To carry out a homogeneous analysis of the database, the data must first be homogenized and corrections made to standardize the variables and performances different score in according values or classification.
+
+For example this data base has different values or names in classification variables. Is important standardize it.
+
+An case that is necessary, we make a new variables in somes cases with other classification.
+
+The following variables will be cleaned. 
+- SEX
+- TOTCHOL
+- AGE
+- CURSMOKE
+- SYSBP
+- EDUC 
+- BMI 
+- TIMECVD
+- CVD
+
+A new variable needs to be made for BMI (3 categories) and TOTCHOL (2 categories).
+
+step 1 of data cleaning:
+-summary
+
+The following variables show weird values:   
+SEX is not clean, 
+AGE has a max of 600. 
+Total chol has a possible unrealistic max, 
+SYSBP has a max of 295 (VERY VERY VERY HIGH)
+BMI has a max of 241.90 
+```{r}
+summary(data_all) #resume all data (not cleaning)
+
+# We select the period 1 because have more lectures or data.
+data <- data_all[data_all$PERIOD == 1, ]
+summary(data)
+```
+
+Now sex will be cleaned. 
+
+The variable*sex* that 1= male and 2 = female 
+
+```{r}
+
+data$sex_adj <- 1 #creating a new variable, with all 1's
+data$sex_adj[data$SEX == "male"] <- 1 
+data$sex_adj[data$SEX == "Male"] <- 1 
+data$sex_adj[data$SEX == "Man"] <- 1 
+data$sex_adj[data$SEX == "man"] <- 1 
+data$sex_adj[data$SEX == "2"] <- 2
+data$sex_adj[data$SEX == "Female"] <- 2
+data$sex_adj[data$SEX == "female"] <- 2
+data$sex_adj[data$SEX == " "] <- NA
+data$sex_adj[is.na(data$SEX)] <- NA
+
+unique(data$sex_adj) 
+summary(data$sex_adj)
+
+prop.table(table(data$sex_adj))
+```
+
+```{r}
+summary(data$AGE)
+
+mean(data$AGE, na.rm=TRUE)
+
+sd(data$AGE, na.rm=TRUE)
+
+sum(is.na(data$AGE)) # We have 1 na in this variable
+
+hist(data$AGE, breaks = 90, xlab = "Age (in years)", main = "Age distribution", col = "brown2", xlim = c(20, 80))
+
+which(data$AGE > 99)
+
+data$AGE[c(10, 15)] <- NA 
+
+summary(data$AGE)
+mean(data$AGE, na.rm=TRUE)
+sd(data$AGE, na.rm=TRUE)
+sum(is.na(data$AGE))
+
+hist(data$AGE, breaks = 50, xlab = "Age (in years)", main = "Age distribution ", col = "brown2", xlim = c(25, 80))
+
+quantile(data$AGE, probs=c(0.2),na.rm=TRUE)
+qqnorm(data$AGE, col = "pink")
+qqline(data$AGE, col="green") 
+```
+
+```{r}
+
+summary(data$CURSMOKE)
+sum(is.na(data$CURSMOKE))
+which(is.na(data$CURSMOKE))
+table(data$CURSMOKE)
+prop.table(table(data$CURSMOKE)) 
+
+```
+
+```{r}
+summary(data$TOTCHOL)
+mean(data$TOTCHOL, na.rm=TRUE)
+sd(data$TOTCHOL, na.rm=TRUE)
+sum(is.na(data$TOTCHOL))
+hist(data$TOTCHOL, breaks = 100, xlab = "Total cholestrol (in mg/dL) ", main = "Total cholesterol distribution", col = "chocolate3",ylim=c(0,250))
+
+which(data$TOTCHOL > 500)
+
+
+data$TOTCHOL_adj <- 1
+data$TOTCHOL_adj [data$TOTCHOL < 200] <- 0
+data$TOTCHOL_adj [data$TOTCHOL > 240] <- 2
+data$TOTCHOL_adj [is.na(data$BMI)] <- NA
+
+table(data$TOTCHOL_adj)
+
+prop.table(table(data$TOTCHOL_adj)) 
+
+```
+
+```{r}
+summary(data$SYSBP)
+mean(data$SYSBP, na.rm=TRUE)
+sd(data$SYSBP, na.rm=TRUE)
+sum(is.na(data$SYSBP))
+hist(data$SYSBP, breaks = 100, xlab = "Systolic blood pressure", main = "Systolic Blood pressure distribution", col = "cyan",ylim=c(0,250))
+which(data$SYSBP > 270)
+
+```
+
+```{r}
+
+unique(data$educ)
+summary(data$educ)
+
+table(data$educ)
+prop.table(table(data$educ))
+
+```
+
+```{r}
+unique(data$BMI)
+
+data$BMI_adj <- 1 #creating a new variable, with all 1's
+data$BMI_adj[data$BMI < 18.5] <- 0 
+data$BMI_adj[data$BMI > 25] <- 2
+data$BMI_adj[is.na(data$BMI)] <- NA
+
+unique(data$BMI_adj)
+prop.table(table(data$BMI_adj))
+
+sum(is.na(data$BMI_adj))
+```
+
+```{r}
+
+data$CVD_adj <- 1
+data$CVD_adj[data$PREVCHD == "1"] <- 0
+data$CVD_adj[data$CVD == "0"] <- 0
+
+summary(data$TIMECVD)
+mean(data$TIMECVD, na.rm=TRUE)
+sd(data$TIMECVD, na.rm=TRUE)
+sum(is.na(data$TIMECVD))
+hist(data$TIMECVD, ylim = c(0,200), breaks = 100, xlab = "Time to CVD (in days)", main = "Time to a CVD distribution", col = "#A39038")
+
+```
+
+
+```{r}
+fitKMCVD <- survfit(Surv(TIMECVD,CVD_adj)~1, data=data) 
+
+ggsurvplot(fitKMCVD, ylim=c(0.5,1.0), xlab = 'Days', ylab = 'Survival', legend.labs = c(""), legend.title ='BMI', palette = c("#332A01", "#7EBBBB", "#290117"),data=data, title = "Kaplan-Meier Curve for incidence of CVD", ggtheme = theme_minimal())
+
+########
+fitKMBMI <- survfit(Surv(TIMECVD,CVD_adj)~BMI_adj, data=data) 
+
+ggsurvplot(fitKMBMI, ylim=c(0.5,1.0), xlab = 'Days', ylab = 'Survival', legend.labs = c("Underweight", "Normal", "Overweight"), legend.title ='BMI', palette = c("#7EBBBB","#CB1F80", "#2F3BAE"),data=data, title = "Kaplan-Meier Curve for incidence of CVD", ggtheme = theme_minimal())
+
+ 
+########
+fitKMTOTCHOL <- survfit(Surv(TIMECVD,CVD_adj)~TOTCHOL_adj, data=data) 
+
+ggsurvplot(fitKMTOTCHOL, ylim=c(0.5,1.0), xlab = 'Days', ylab = 'Survival', legend.labs = c("Low cholesterol", "Normal cholesterol", "High cholesterol"), legend.title ='Total cholesterol', palette = c("#7EBBBB","#CB1F80","#2F3BAE"),data=data, title = "Kaplan-Meier Curve for incidence of CVD",  ggtheme = theme_minimal())
+
+
+#########
+fitKMCURSMOKE <- survfit(Surv(TIMECVD,CVD_adj)~CURSMOKE, data=data)
+
+ggsurvplot(fitKMCURSMOKE, ylim=c(0.5,1.0), xlab = 'Days', ylab = 'Survival', legend.labs = c("Non-smoker", "smoker"), legend.title ='Smoking', palette = c("#7EBBBB","#CB1F80"),data=data, title = "Kaplan-Meier Curve for incidence of CVD", ggtheme = theme_minimal())
+
+
+
+```
+
+For *fitKMBMI* Patients with Overweight  are more likely to develop Myocardial infarction problems.And probabilty of survival is more low in comparison with other groups Underweight and Normal
+
+For *fitKMTOTCHOL* Patients with high cholesterol are more likely of developing Myocardial infarction problems and survive less than the other groups Low cholesterol and Normal cholesterol.
+
+For *fitKMCURSMOKE* Patients with smoker are more likely of developing Myocardial infarction problems and survive less than the Non-smoker group.
+
+
+
+```{r}
+## Myocardial infarction
+unique(data$CVD)
+
+prop.table(table(data$CVD))
+
+```
+
+```{r}
+chisq.test(data$CVD_adj, data$BMI_adj)
+```
+A small p-value
+```{r}
+chisq.test(data$CVD_adj, data$TOTCHOL_adj)
+```
+A small p-value
+```{r}
+chisq.test(data$CVD_adj, data$CURSMOKE)
+```
+A small p-value
+
+$$MODELS~FOR~COX~PROPORTIONAL~HAZARD~REGRESION$$
+
+
+We try variuos model for select the best
+
+```{r}
+library(car) # For see best the p-values
+
+# AIC criteria is for select the best model. In this case we need select the model with the most lower AIC.
+
+coxfit1 <- coxph(Surv(CVD_adj)~ CURSMOKE, data=data) 
+summary(coxfit1)
+Anova(coxfit1)
+AIC(coxfit1)
+
+coxfit1.1 <- coxph(Surv(CVD_adj)~ CURSMOKE 
+                + sex_adj 
+                + AGE
+                + educ
+                , data=data) 
+summary(coxfit1.1)
+Anova(coxfit1.1)
+AIC(coxfit1.1) # Most lower AIC
+
+
+coxfit1.2 <- coxph(Surv(CVD_adj)~ CURSMOKE*sex_adj 
+                + sex_adj 
+                + AGE
+                + educ
+                , data=data) 
+summary(coxfit1.2)
+Anova(coxfit1.2)
+AIC(coxfit1.2)
+```
+The best model was coxfit1.1 since it has the lowest AIC value, in addition, the different variables evaluated have a low p value, which indicates that they are statistically significant.
+
+the p value for sex was 1e-15 with a hazard ratio HR = exp(coef) = 1.28 indicating a strong relationship between the patients’ sex and Myocardial infarction. The hazard ratios of covariates are interpretable as multiplicative effects on the hazard. For example, holding the other covariates constant, being female (sex=2) reduces the hazard by a factor of 1.28. We conclude that being female is associated with good forecast.
+
+There is not evidence of interaction between sex in CVD_adj when CURSMOKE*sex_adj was test
+
+```{r}
+coxfit2 <- coxph(Surv(CVD_adj)~ BMI_adj, data=data)
+summary(coxfit2)
+Anova(coxfit2)
+AIC(coxfit2)
+
+coxfit2.1 <- coxph(Surv(CVD_adj)~ BMI_adj 
+                 + sex_adj 
+                 + AGE 
+                 + CURSMOKE
+                 + GLUCOSE , data=data)
+summary(coxfit2.1)
+Anova(coxfit2.1)
+AIC(coxfit2.1)
+
+coxfit2.2 <- coxph(Surv(CVD_adj)~ BMI_adj*sex_adj 
+                 + AGE 
+                 + CURSMOKE
+                 + GLUCOSE , data=data)
+summary(coxfit2.2)
+Anova(coxfit2.2)
+AIC(coxfit2.2)
+```
+The best model was coxfit2.1 since it has the most lowest AIC value, in addition, the different variables evaluated have a low p value, which indicates that they are statistically significant.
+
+the p value for sex was 1.22e-11 with a hazard ratio HR = exp(coef) = 1.2516 indicating a strong relationship.
+The hazard ratios of covariates are interpretable as multiplicative effects on the hazard. For example, holding the other covariates constant, being female (sex=2) reduces the hazard by a factor of 1.25. We conclude that being female is associated with good forecast.
+
+There is not evidence of interaction between sex in CVD_adj when BMI_adj*sex_adj was test.
+
+```{r}
+coxfit3 <- coxph(Surv(CVD_adj)~ TOTCHOL_adj, data=data)
+summary(coxfit3)
+Anova(coxfit3)
+AIC(coxfit3)
+
+coxfit3.1 <- coxph(Surv(CVD_adj)~ TOTCHOL_adj
+                 + BMI_adj
+                 + AGE
+                 + sex_adj
+                 + GLUCOSE, data=data)
+summary(coxfit3.1)
+Anova(coxfit3.1)
+AIC(coxfit3.1)
+
+coxfit3.2 <- coxph(Surv(CVD_adj)~ TOTCHOL_adj*sex_adj 
+                   + BMI_adj
+                   + AGE
+                   + sex_adj
+                   + GLUCOSE, data=data)
+summary(coxfit3.2)
+Anova(coxfit3.2)
+AIC(coxfit3.2)
+```
+The best model was coxfit3.1 since it has the most lowest AIC value, in addition, the different variables evaluated have a low p value, which indicates that they are statistically significant.
+
+the p value for sex was 3.05e-15 with a hazard ratio HR = exp(coef) =  1.29 indicating a strong relationship.
+The hazard ratios of covariates are interpretable as multiplicative effects on the hazard. For example, holding the other covariates constant, being female (sex=2) reduces the hazard by a factor of 1.29. We conclude that being female is associated with good forecast.
+
+There is not evidence of interaction between sex in CVD_adj when TOTCHOL_adj*sex_adj was test.
+
+$$Discussion$$
+
+After cleaning the database, ordering each variable in classificatory values and reducing the events of missing data, the analysis of the survival models continued. This is important to standardize evaluation criteria.
+
+Attempted to find a **Cox porportional hazards regesion model** to predict *Myocardial infarction* (CVD_adj) based on Current cigarette smoking at exam _(CURSMOKE)_, Body Mass Index _(BMI)_, and Serum Total Cholesterol _(TOTCHOL)_, as well as AGE, educ, sex_adj, Casual serum glucose (GLUCOSE). Various Models was test in combinations between variables (TOTCHOL + CURSMOKE) in some cases.
+
+In each case, the best model that presented significant values (low p-values) in all the contrasted variables, as well as in the other evaluation criteria, was selected. For each case, three models were tested and the best one was chosen. In addition, the interaction with the sex_adj of the patients was performed _(coxfit1.2, coxfit2.2, coxfit3.2)_, but no statistically significant values were found. This indicates that sex has no interaction with the variables evaluated. But when evaluating them without interaction, they do present statistical significance. 
+
+For example, Kaplan-Meier Curve for incidence of CVD with _TOTCHOL_, allows us to assume that patients with high cholesterol content have a lower probability of survival if they present CDV, while patients with low cholesterol content can and have a longer time of CVD involvement prolonged survival. Likewise, it can be said with Current cigarette smoking patients that they have a lower probability of survival if they present CVD problems. 
+
+We can then say that both the graphs and the models allow to show the relationship between the variables evaluated to assume their behavior in the survival of the patients. 
+
+
+
+
+
